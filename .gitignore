@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Build output and local Worker state
+app/dist/
+api/.wrangler/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+api/.dev.vars
+*.local
+
+# Logs and OS files
+*.log
+.DS_Store
+

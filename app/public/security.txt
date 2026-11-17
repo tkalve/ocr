@@ -1,0 +1,5 @@
+Contact: https://github.com/tkalve/ocr/security/advisories/new
+Expires: 2027-11-17T23:59:59.000Z
+Preferred-Languages: en, nb
+Canonical: https://ocr.tkalve.dev/security.txt
+Policy: https://github.com/tkalve/ocr/blob/main/SECURITY.md
