@@ -2,11 +2,23 @@ const MAX_BYTES = 25 * 1024 * 1024
 const MAX_REDIRECTS = 5
 const TIMEOUT_MS = 20_000
 
+/** The static assets get the full set from app/public/_headers; API responses need these too. */
+const SECURITY_HEADERS = {
+  'strict-transport-security': 'max-age=31536000; includeSubDomains',
+  'content-security-policy': "default-src 'none'; frame-ancestors 'none'",
+  'x-frame-options': 'SAMEORIGIN',
+  'x-content-type-options': 'nosniff',
+  'referrer-policy': 'strict-origin-when-cross-origin',
+  'permissions-policy': 'camera=(), microphone=(), geolocation=()',
+}
+
 export default {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url)
-    if (url.pathname === '/api/image') return proxyImage(request, url)
-    return fail(404, 'not_found', 'Not found.')
+    const response = url.pathname === '/api/image' ? await proxyImage(request, url) : fail(404, 'not_found', 'Not found.')
+    const secured = new Response(response.body, response)
+    for (const [name, value] of Object.entries(SECURITY_HEADERS)) secured.headers.set(name, value)
+    return secured
   },
 } satisfies ExportedHandler
 
