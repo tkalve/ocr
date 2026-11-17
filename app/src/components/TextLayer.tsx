@@ -92,11 +92,14 @@ interface Props {
 
 export const TextLayer = memo(function TextLayer({ result, width, height, scale, showRegions, ref }: Props) {
   const lines = useMemo(() => result.lines.map(layoutLine), [result])
+  const { frame } = result
+  // The frame shares the image's centre; turn it back onto the image when the text was straightened for reading.
+  const transform = `scale(${scale}) translate(${width / 2}px, ${height / 2}px) rotate(${frame.rotation}rad) translate(${-frame.width / 2}px, ${-frame.height / 2}px)`
   return (
     <div
       ref={ref}
       className={`text-layer${showRegions ? ' show-regions' : ''}`}
-      style={{ width, height, transform: `scale(${scale})`, fontFamily: FONT_FAMILY }}
+      style={{ width: frame.width, height: frame.height, transform, fontFamily: FONT_FAMILY }}
     >
       {lines.map((line, i) => (
         <div key={i} className="text-line" data-paragraph={line.paragraph} style={line.style}>

@@ -1,5 +1,6 @@
 import { createWorker, PSM, type ImageLike, type Page, type Worker } from 'tesseract.js'
-import { rasterizeForOcr, type LoadedImage } from './image.ts'
+import { rasterizeForOcr, type LoadedImage, type OcrFrame } from './image.ts'
+import { estimateSkew } from './skew.ts'
 
 export interface OcrWord {
   text: string
@@ -13,6 +14,8 @@ export interface OcrLine {
   words: OcrWord[]
   /** Index of the paragraph this line belongs to. */
   paragraph: number
+  /** The line the letters sit on, as its two end points. */
+  baseline: { x0: number; y0: number; x1: number; y1: number }
   x0: number
   y0: number
   x1: number
@@ -20,7 +23,15 @@ export interface OcrLine {
 }
 
 export interface OcrResult {
-  /** Lines in reading order, in image pixel coordinates. */
+  /** The language the text was read as. */
+  language: string
+  /**
+   * The coordinate frame of the lines: the image itself, or, when its text is
+   * tilted, a larger box that shares the image's centre and must be turned by
+   * `rotation` (radians, clockwise) to lie on the image.
+   */
+  frame: { width: number; height: number; rotation: number }
+  /** Lines in reading order, in frame coordinates (image pixels). */
   lines: OcrLine[]
   text: string
   wordCount: number
@@ -36,6 +47,9 @@ export interface OcrProgress {
 
 /** Words Tesseract is this unsure about are almost always noise from non-text areas. */
 const MIN_WORD_CONFIDENCE = 20
+
+/** A line this much further down than the usual line spacing starts a new paragraph. */
+const PARAGRAPH_GAP = 1.4
 
 /**
  * Layout modes to try, in order. Automatic layout analysis ignores borders and
@@ -61,19 +75,20 @@ const assetUrl = (path: string) => new URL(`${import.meta.env.BASE_URL}tesseract
 
 interface Engine {
   lang: string
-  /** Resolves when the worker is initialised for `lang`. */
+  /** Resolves when the worker is ready to read `lang`. */
   ready: Promise<Worker>
-  /** The underlying worker, regardless of whether a later language switch succeeded. */
-  raw: Promise<Worker>
 }
 
-let engine: Engine | null = null
-let listener: ((progress: OcrProgress) => void) | null = null
+/** One worker per language in use, so several languages can be read side by side. */
+const engines = new Map<string, Engine>()
+let listener: ((lang: string, progress: OcrProgress) => void) | null = null
+
+const STARTING: OcrProgress = { label: 'Starting OCR engine', value: null }
 
 function describe(status: string, progress: number): OcrProgress {
   if (status.startsWith('recognizing')) return { label: 'Reading text', value: progress }
   if (status.startsWith('loading language')) return { label: 'Loading language model', value: null }
-  return { label: 'Starting OCR engine', value: null }
+  return STARTING
 }
 
 /**
@@ -83,39 +98,28 @@ function describe(status: string, progress: number): OcrProgress {
  * `recognize` call (which posts within microtasks, see `recognize` below).
  */
 function dispose(target: Engine) {
-  if (engine === target) engine = null
-  target.ready
-    .catch(() => {})
-    .then(() => target.raw)
-    .then(
-      (worker) => setTimeout(() => void worker.terminate().catch(() => {}), 0),
-      () => {},
-    )
+  if (engines.get(target.lang) === target) engines.delete(target.lang)
+  target.ready.then(
+    (worker) => setTimeout(() => void worker.terminate().catch(() => {}), 0),
+    () => {},
+  )
 }
 
 function acquire(lang: string): Engine {
-  if (engine?.lang === lang) return engine
-  const previous = engine
-  const raw = previous
-    ? previous.raw
-    : createWorker(lang, 1, {
-        workerPath: assetUrl('worker.min.js'),
-        corePath: assetUrl('core'),
-        langPath: assetUrl('lang'),
-        workerBlobURL: false,
-        logger: (m) => listener?.(describe(m.status, m.progress)),
-      })
-  const ready = previous
-    ? previous.ready.then(async (worker) => {
-        await worker.reinitialize(lang, 1)
-        return worker
-      })
-    : raw
-  const next: Engine = { lang, ready, raw }
-  engine = next
+  const existing = engines.get(lang)
+  if (existing) return existing
+  const ready = createWorker(lang, 1, {
+    workerPath: assetUrl('worker.min.js'),
+    corePath: assetUrl('core'),
+    langPath: assetUrl('lang'),
+    workerBlobURL: false,
+    logger: (m) => listener?.(lang, describe(m.status, m.progress)),
+  })
+  const engine: Engine = { lang, ready }
+  engines.set(lang, engine)
   // A failed start (e.g. offline before the model was cached) must not poison later attempts.
-  ready.catch(() => dispose(next))
-  return next
+  ready.catch(() => dispose(engine))
+  return engine
 }
 
 async function encodePng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
@@ -124,74 +128,111 @@ async function encodePng(canvas: HTMLCanvasElement): Promise<Uint8Array> {
   return new Uint8Array(await blob.arrayBuffer())
 }
 
+interface Reading {
+  result: OcrResult
+  score: number
+}
+
 /**
- * Runs OCR on an image. Only one recognition runs at a time: aborting the
- * signal while the engine is reading tears it down, so the next call starts
- * immediately. An engine that is merely starting up is kept and reused.
+ * Runs OCR on an image. With several languages the image is read in each of
+ * them side by side, and the reading with the most confidently read text wins
+ * (the first language on a tie).
+ *
+ * Only one recognition runs at a time: aborting the signal while an engine is
+ * reading tears it down, so the next call starts immediately. An engine that
+ * is merely starting up is kept and reused.
  */
 export async function recognize(
   image: LoadedImage,
-  lang: string,
+  langs: string[],
   onProgress: (progress: OcrProgress) => void,
   signal: AbortSignal,
 ): Promise<OcrResult> {
   signal.throwIfAborted()
-  const { canvas, scaleX, scaleY } = rasterizeForOcr(image)
-  // Start the engine right away; it loads while the image is being encoded.
-  acquire(lang)
-  const png = await encodePng(canvas)
+  // Engines for languages that are no longer wanted give their memory back.
+  for (const engine of [...engines.values()]) if (!langs.includes(engine.lang)) dispose(engine)
+  const upright = rasterizeForOcr(image)
+  // Start the engines right away; they load while the image is being prepared.
+  for (const lang of langs) acquire(lang)
+
+  // Tilted text is read from a straightened copy. The untouched image is read
+  // too and wins unless straightening really helped, so a misjudged tilt (a
+  // picture full of slanted lines, say) can never make the result worse.
+  const skew = estimateSkew(upright.canvas)
+  const frames = skew === 0 ? [upright] : [rasterizeForOcr(image, skew), upright]
+  const inputs: { frame: OcrFrame; png: Uint8Array }[] = []
+  for (const frame of frames) inputs.push({ frame, png: await encodePng(frame.canvas) })
   signal.throwIfAborted()
 
-  const current = acquire(lang)
-  listener = onProgress
-  let reading = false
+  // Progress is reported per language; show whichever step is still holding things up.
+  const states = new Map<string, OcrProgress>()
+  const report = (lang: string, progress: OcrProgress) => {
+    states.set(lang, progress)
+    const all = langs.map((l) => states.get(l) ?? STARTING)
+    const waiting = all.find((state) => state.value === null)
+    onProgress(waiting ?? { label: all[0].label, value: all.reduce((sum, state) => sum + (state.value ?? 0), 0) / all.length })
+  }
+  listener = report
+  const reading = new Set<Engine>()
 
   let onAbort!: () => void
   const aborted = new Promise<never>((_, reject) => {
     onAbort = () => {
-      if (reading) dispose(current)
+      for (const engine of reading) dispose(engine)
       reject(signal.reason)
     }
     signal.addEventListener('abort', onAbort, { once: true })
   })
 
   try {
-    const job = current.ready.then(async (worker) => {
-      let best: { result: OcrResult; score: number } | null = null
-      for (const mode of LAYOUT_MODES) {
-        signal.throwIfAborted()
-        reading = true
-        if (best) onProgress({ label: 'Looking closer', value: null })
-        await worker.setParameters({ tessedit_pageseg_mode: mode })
-        signal.throwIfAborted()
-        // Already-encoded bytes make Tesseract.js post the job without any async image loading.
-        const { data } = await worker.recognize(png as unknown as ImageLike, {}, { text: true, blocks: true })
-        const confidences = new Map<OcrWord, number>()
-        const result = parse(data, scaleX, scaleY, confidences)
-        const score = substance(result, confidences)
-        if (!best || score > best.score) best = { result, score }
-        if (best.score > 0) break
-      }
-      return best!.result
+    const jobs = langs.map((lang) => {
+      const engine = acquire(lang)
+      return engine.ready.then(async (worker): Promise<Reading> => {
+        let best: Reading | null = null
+        let first = true
+        for (const { frame, png } of inputs) {
+          let found: Reading | null = null
+          for (const mode of LAYOUT_MODES) {
+            signal.throwIfAborted()
+            reading.add(engine)
+            if (!first) report(lang, { label: 'Looking closer', value: null })
+            first = false
+            await worker.setParameters({ tessedit_pageseg_mode: mode })
+            signal.throwIfAborted()
+            // Already-encoded bytes make Tesseract.js post the job without any async image loading.
+            const { data } = await worker.recognize(png as unknown as ImageLike, {}, { text: true, blocks: true })
+            const confidences = new Map<OcrWord, number>()
+            const result = parse(data, frame, lang, confidences)
+            const score = substance(result, confidences)
+            if (!found || score > found.score) found = { result, score }
+            if (found.score > 0) break
+          }
+          // Later frames are less processed, so they win ties.
+          if (found && (!best || found.score >= best.score)) best = found
+        }
+        report(lang, { label: 'Reading text', value: 1 })
+        return best!
+      })
     })
-    job.catch(() => {})
-    return await Promise.race([job, aborted])
+    const all = Promise.all(jobs)
+    all.catch(() => {})
+    const readings = await Promise.race([all, aborted])
+    return readings.reduce((best, candidate) => (candidate.score > best.score ? candidate : best)).result
   } catch (error) {
-    // A failed read leaves the engine in an unknown state; start fresh next time.
-    if (!signal.aborted && reading) dispose(current)
+    // A failed read leaves the engines in an unknown state; start fresh next time.
+    if (!signal.aborted) for (const engine of reading) dispose(engine)
     throw error
   } finally {
     signal.removeEventListener('abort', onAbort)
-    if (listener === onProgress) listener = null
+    if (listener === report) listener = null
   }
 }
 
-function parse(data: Page, scaleX: number, scaleY: number, confidences: Map<OcrWord, number>): OcrResult {
+function parse(data: Page, frame: OcrFrame, language: string, confidences: Map<OcrWord, number>): OcrResult {
+  const { scaleX, scaleY } = frame
   const lines: OcrLine[] = []
-  let paragraph = 0
   for (const block of data.blocks ?? []) {
     for (const para of block.paragraphs) {
-      let used = false
       for (const line of para.lines) {
         const words: OcrWord[] = []
         for (const word of line.words) {
@@ -208,26 +249,69 @@ function parse(data: Page, scaleX: number, scaleY: number, confidences: Map<OcrW
         }
         if (words.length === 0) continue
         words.sort((a, b) => a.x0 - b.x0)
+        const y1 = Math.max(...words.map((w) => w.y1))
+        const base = line.baseline
+        const hasBaseline = base && [base.x0, base.y0, base.x1, base.y1].every(Number.isFinite) && base.x1 > base.x0
         lines.push({
           words,
-          paragraph,
+          paragraph: 0,
+          baseline: hasBaseline
+            ? { x0: base.x0 / scaleX, y0: base.y0 / scaleY, x1: base.x1 / scaleX, y1: base.y1 / scaleY }
+            : { x0: words[0].x0, y0: y1, x1: words[words.length - 1].x1, y1 },
           x0: Math.min(...words.map((w) => w.x0)),
           y0: Math.min(...words.map((w) => w.y0)),
           x1: Math.max(...words.map((w) => w.x1)),
-          y1: Math.max(...words.map((w) => w.y1)),
+          y1,
         })
-        used = true
       }
-      if (used) paragraph++
     }
   }
+  assignParagraphs(lines)
 
   return {
+    language,
+    frame: { width: frame.width, height: frame.height, rotation: frame.rotation },
     lines,
     text: joinLines(lines.map((line) => ({ paragraph: line.paragraph, text: line.words.map((w) => w.text).join(' ') }))),
     wordCount: lines.reduce((n, line) => n + line.words.length, 0),
     confidence: data.confidence,
   }
+}
+
+/**
+ * Groups lines into paragraphs by how they are spaced on the page. Tesseract's
+ * own paragraphs are not used: it splits ragged text such as verse or short
+ * labels into one paragraph per line.
+ *
+ * A line starts a new paragraph when it sits clearly further below the
+ * previous line than lines usually do, or when it does not follow on from it
+ * at all (the next column, a caption off to the side).
+ */
+function assignParagraphs(lines: OcrLine[]): void {
+  /** How far line `i` sits below the line before it, or null when it doesn't continue from it. */
+  const drop = (i: number): number | null => {
+    const above = lines[i - 1]
+    const below = lines[i]
+    const left = Math.max(above.x0, below.x0)
+    const right = Math.min(above.x1, below.x1)
+    if (right <= left) return null
+    // Measured at a shared x, so a slight slant in the scan doesn't count as spacing.
+    const x = (left + right) / 2
+    const at = ({ x0, y0, x1, y1 }: OcrLine['baseline']) => y0 + ((y1 - y0) * (x - x0)) / (x1 - x0)
+    const distance = at(below.baseline) - at(above.baseline)
+    return distance > 0 ? distance : null
+  }
+
+  const drops = lines.map((_, i) => (i === 0 ? null : drop(i)))
+  const known = drops.filter((d): d is number => d !== null).sort((a, b) => a - b)
+  const usual = known.length > 0 ? known[(known.length - 1) >> 1] : 0
+
+  let paragraph = 0
+  lines.forEach((line, i) => {
+    const distance = drops[i]
+    if (i > 0 && (distance === null || distance > usual * PARAGRAPH_GAP)) paragraph++
+    line.paragraph = paragraph
+  })
 }
 
 /** Joins lines with newlines, and paragraphs with a blank line. */

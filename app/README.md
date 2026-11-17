@@ -30,6 +30,9 @@ npm install @tesseract.js-data/fin
 
 and give it a display name in `src/lib/languages.ts`.
 
+The default choice, "Auto", reads the image in English and Norwegian side by side and keeps whichever
+reading holds the most confidently read text (`AUTO_LANGUAGES` in the same file).
+
 ## Deploy
 
 The Worker in `../api` serves both the built app and the API:

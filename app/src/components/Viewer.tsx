@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { BACKDROP_COLORS, type LoadedImage } from '../lib/image.ts'
-import { LANGUAGES } from '../lib/languages.ts'
+import { AUTO, LANGUAGE_CHOICES, languageName, languagesFor } from '../lib/languages.ts'
 import { recognize, type OcrProgress, type OcrResult } from '../lib/ocr.ts'
 import { copyText, selectedText, selectionTouches } from '../lib/selection.ts'
 import { TextLayer } from './TextLayer.tsx'
@@ -55,7 +55,7 @@ export function Viewer({ image, busy, language, onLanguage, onPick, onCapture, o
     const set = (state: OcrState) => {
       if (!controller.signal.aborted) setStored({ run, state })
     }
-    recognize(image, language, (progress) => set({ status: 'running', progress }), controller.signal).then(
+    recognize(image, languagesFor(language), (progress) => set({ status: 'running', progress }), controller.signal).then(
       (result) => set({ status: 'done', result }),
       (error: unknown) => {
         if (controller.signal.aborted) return
@@ -179,7 +179,7 @@ export function Viewer({ image, busy, language, onLanguage, onPick, onCapture, o
           <label className="select">
             <span className="visually-hidden">Language of the text</span>
             <select value={language} onChange={(e) => onLanguage(e.target.value)}>
-              {LANGUAGES.map((l) => (
+              {LANGUAGE_CHOICES.map((l) => (
                 <option key={l.code} value={l.code}>
                   {l.name}
                 </option>
@@ -291,7 +291,8 @@ export function Viewer({ image, busy, language, onLanguage, onPick, onCapture, o
                 {ocr.status === 'error' && 'Something went wrong'}
                 {result &&
                   (hasText
-                    ? `${result.wordCount} ${result.wordCount === 1 ? 'word' : 'words'} · ${Math.round(result.confidence)}% confidence`
+                    ? `${result.wordCount} ${result.wordCount === 1 ? 'word' : 'words'} · ${Math.round(result.confidence)}% confidence` +
+                      (language === AUTO ? ` · ${languageName(result.language)}` : '')
                     : 'Nothing to read')}
               </p>
             </div>
@@ -320,7 +321,7 @@ export function Viewer({ image, busy, language, onLanguage, onPick, onCapture, o
             {result && !hasText && (
               <div className="empty">
                 <p>No text was found in this image.</p>
-                <p className="muted">If the text isn't {LANGUAGES.find((l) => l.code === language)?.name ?? 'this language'}, pick its language above.</p>
+                <p className="muted">If the text isn't {languagesFor(language).map(languageName).join(' or ')}, pick its language above.</p>
               </div>
             )}
             {hasText && <pre className="panel-text">{result.text}</pre>}
