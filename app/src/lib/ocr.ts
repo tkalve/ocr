@@ -211,7 +211,8 @@ export async function recognize(
             reading.add(engine)
             if (!first) report(lang, { step: 'lookingCloser', value: null })
             first = false
-            await worker.setParameters({ tessedit_pageseg_mode: mode })
+            // Canvas PNGs carry no DPI; without one Tesseract logs "Estimating resolution" on every run.
+            await worker.setParameters({ tessedit_pageseg_mode: mode, user_defined_dpi: '300' })
             signal.throwIfAborted()
             // Already-encoded bytes make Tesseract.js post the job without any async image loading.
             const { data } = await worker.recognize(png as unknown as ImageLike, {}, { text: true, blocks: true })
