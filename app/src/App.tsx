@@ -1,0 +1,215 @@
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Landing } from './components/Landing.tsx'
+import { Viewer } from './components/Viewer.tsx'
+import { UploadIcon } from './components/icons.tsx'
+import { loadImage, type LoadedImage } from './lib/image.ts'
+import { loadLanguage, saveLanguage } from './lib/languages.ts'
+import { extract, fetchImage, normalizeUrl, readClipboard, type Extracted, type ImageSource } from './lib/source.ts'
+
+interface Toast {
+  id: number
+  message: string
+  kind: 'info' | 'error'
+}
+
+const isTextField = (target: EventTarget | null) =>
+  target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA)$/.test(target.tagName))
+
+/** Whether a drag carries something we could turn into an image. */
+const isUsefulDrag = (event: DragEvent) =>
+  Boolean(event.dataTransfer?.types.some((t) => t === 'Files' || t === 'text/uri-list' || t === 'text/html'))
+
+export default function App() {
+  const [image, setImage] = useState<LoadedImage | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [toast, setToast] = useState<Toast | null>(null)
+  const [dragging, setDragging] = useState(false)
+  const [language, setLanguage] = useState(loadLanguage)
+
+  const request = useRef(0)
+  const current = useRef<LoadedImage | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+
+  const notify = useCallback((message: string, kind: 'info' | 'error' = 'info') => {
+    setToast({ id: Date.now() + Math.random(), message, kind })
+  }, [])
+
+  useEffect(() => {
+    if (!toast) return
+    const timer = setTimeout(() => setToast(null), toast.kind === 'error' ? 6000 : 2000)
+    return () => clearTimeout(timer)
+  }, [toast])
+
+  /** Loads a new image; the latest request always wins. */
+  const open = useCallback(
+    async (label: string, source: () => Promise<ImageSource>) => {
+      const id = ++request.current
+      setBusy(label)
+      try {
+        const { blob, name } = await source()
+        const loaded = await loadImage(blob, name)
+        if (id !== request.current) {
+          URL.revokeObjectURL(loaded.url)
+          return
+        }
+        if (current.current) URL.revokeObjectURL(current.current.url)
+        current.current = loaded
+        setToast(null)
+        document.getSelection()?.removeAllRanges()
+        setImage(loaded)
+      } catch (error) {
+        if (id === request.current) notify(error instanceof Error ? error.message : 'Could not open that image.', 'error')
+      } finally {
+        if (id === request.current) setBusy(null)
+      }
+    },
+    [notify],
+  )
+
+  const openFile = useCallback(
+    (file: File) => open('Opening image…', async () => ({ blob: file, name: file.name || 'Pasted image' })),
+    [open],
+  )
+  const openUrl = useCallback((url: string) => open('Fetching image…', () => fetchImage(url)), [open])
+
+  const openExtracted = useCallback(
+    (found: Extracted, emptyMessage: string) => {
+      if (found.kind === 'file') void openFile(found.file)
+      else if (found.kind === 'url') void openUrl(found.url)
+      else notify(emptyMessage, 'error')
+    },
+    [notify, openFile, openUrl],
+  )
+
+  const close = useCallback(() => {
+    request.current++
+    if (current.current) URL.revokeObjectURL(current.current.url)
+    current.current = null
+    setBusy(null)
+    setImage(null)
+  }, [])
+
+  const submitUrl = useCallback(
+    (value: string) => {
+      const url = normalizeUrl(value, true)
+      if (!url) {
+        notify("That doesn't look like a link to an image.", 'error')
+        return false
+      }
+      void openUrl(url)
+      return true
+    },
+    [notify, openUrl],
+  )
+
+  const pasteFromClipboard = useCallback(async () => {
+    try {
+      openExtracted(await readClipboard(), 'There is no image or image link on your clipboard.')
+    } catch (error) {
+      notify(error instanceof Error ? error.message : 'Could not read the clipboard.', 'error')
+    }
+  }, [notify, openExtracted])
+
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      if (!event.clipboardData) return
+      const found = extract(event.clipboardData)
+      // Inside a text field only an actual image is ours; text is left to the field.
+      if (isTextField(event.target) && found.kind !== 'file') return
+      if (found.kind === 'none' && !found.hadContent) return
+      event.preventDefault()
+      openExtracted(found, 'That paste has no image or image link in it.')
+    }
+
+    let depth = 0
+    const onDragEnter = (event: DragEvent) => {
+      if (!isUsefulDrag(event)) return
+      event.preventDefault()
+      depth++
+      setDragging(true)
+    }
+    const onDragOver = (event: DragEvent) => {
+      if (!isUsefulDrag(event)) return
+      event.preventDefault()
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+    }
+    const onDragLeave = (event: DragEvent) => {
+      if (!isUsefulDrag(event)) return
+      depth = Math.max(0, depth - 1)
+      if (depth === 0) setDragging(false)
+    }
+    const onDrop = (event: DragEvent) => {
+      depth = 0
+      setDragging(false)
+      if (!event.dataTransfer || !isUsefulDrag(event)) return
+      event.preventDefault()
+      openExtracted(extract(event.dataTransfer), "That drop didn't contain an image.")
+    }
+
+    document.addEventListener('paste', onPaste)
+    window.addEventListener('dragenter', onDragEnter)
+    window.addEventListener('dragover', onDragOver)
+    window.addEventListener('dragleave', onDragLeave)
+    window.addEventListener('drop', onDrop)
+    return () => {
+      document.removeEventListener('paste', onPaste)
+      window.removeEventListener('dragenter', onDragEnter)
+      window.removeEventListener('dragover', onDragOver)
+      window.removeEventListener('dragleave', onDragLeave)
+      window.removeEventListener('drop', onDrop)
+    }
+  }, [openExtracted])
+
+  const pick = useCallback(() => fileInput.current?.click(), [])
+
+  return (
+    <>
+      {image ? (
+        <Viewer
+          key={image.url}
+          image={image}
+          busy={busy}
+          language={language}
+          onLanguage={(code) => {
+            setLanguage(code)
+            saveLanguage(code)
+          }}
+          onPick={pick}
+          onClose={close}
+          notify={notify}
+        />
+      ) : (
+        <Landing busy={busy} onPick={pick} onPaste={pasteFromClipboard} onUrl={submitUrl} />
+      )}
+
+      <input
+        ref={fileInput}
+        type="file"
+        accept="image/*"
+        hidden
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          if (file) void openFile(file)
+        }}
+      />
+
+      {dragging && (
+        <div className="drop-overlay" aria-hidden="true">
+          <div className="drop-overlay-card">
+            <UploadIcon width="34" height="34" />
+            <span>Drop to read the text</span>
+          </div>
+        </div>
+      )}
+
+      <div className="toast-region" role="status" aria-live="polite">
+        {toast && (
+          <div key={toast.id} className={`toast ${toast.kind}`}>
+            {toast.message}
+          </div>
+        )}
+      </div>
+    </>
+  )
+}
