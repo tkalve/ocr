@@ -1,6 +1,6 @@
 {
   "app": {
-    "title": "Professor Kalves Optiske Mirakelmaskin",
+    "title": "ocr.tkalve.dev",
     "description": "Kopier tekst fra et hvilket som helst bilde. Tekstgjenkjenning som kjører helt i nettleseren din.",
     "privacy": "Bildene forlater aldri enheten din. Ingen informasjonskapsler. Ingen sporing."
   },
