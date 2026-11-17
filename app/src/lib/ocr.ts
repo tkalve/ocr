@@ -1,4 +1,4 @@
-import { createWorker, type ImageLike, type Worker } from 'tesseract.js'
+import { createWorker, PSM, type ImageLike, type Page, type Worker } from 'tesseract.js'
 import { rasterizeForOcr, type LoadedImage } from './image.ts'
 
 export interface OcrWord {
@@ -36,6 +36,26 @@ export interface OcrProgress {
 
 /** Words Tesseract is this unsure about are almost always noise from non-text areas. */
 const MIN_WORD_CONFIDENCE = 20
+
+/**
+ * Layout modes to try, in order. Automatic layout analysis ignores borders and
+ * pictures, which the single-block mode turns into stray "|" and "=" marks, but
+ * it can also dismiss a whole image as a picture; single-block then still reads it.
+ */
+const LAYOUT_MODES = [PSM.AUTO, PSM.SINGLE_BLOCK]
+
+/** How much real text a result holds: confident words with letters or digits in them. */
+function substance(result: OcrResult, confidences: Map<OcrWord, number>): number {
+  let total = 0
+  for (const line of result.lines) {
+    for (const word of line.words) {
+      const confidence = confidences.get(word) ?? 0
+      const characters = word.text.match(/[\p{L}\p{N}]/gu)?.length ?? 0
+      if (confidence >= 60 && characters >= 2) total += characters * confidence
+    }
+  }
+  return total
+}
 
 const assetUrl = (path: string) => new URL(`${import.meta.env.BASE_URL}tesseract/${path}`, location.href).href
 
@@ -136,54 +156,26 @@ export async function recognize(
   })
 
   try {
-    const job = current.ready.then((worker) => {
-      signal.throwIfAborted()
-      reading = true
-      // Already-encoded bytes make Tesseract.js post the job without any async image loading.
-      return worker.recognize(png as unknown as ImageLike, {}, { text: true, blocks: true })
+    const job = current.ready.then(async (worker) => {
+      let best: { result: OcrResult; score: number } | null = null
+      for (const mode of LAYOUT_MODES) {
+        signal.throwIfAborted()
+        reading = true
+        if (best) onProgress({ label: 'Looking closer', value: null })
+        await worker.setParameters({ tessedit_pageseg_mode: mode })
+        signal.throwIfAborted()
+        // Already-encoded bytes make Tesseract.js post the job without any async image loading.
+        const { data } = await worker.recognize(png as unknown as ImageLike, {}, { text: true, blocks: true })
+        const confidences = new Map<OcrWord, number>()
+        const result = parse(data, scaleX, scaleY, confidences)
+        const score = substance(result, confidences)
+        if (!best || score > best.score) best = { result, score }
+        if (best.score > 0) break
+      }
+      return best!.result
     })
     job.catch(() => {})
-    const { data } = await Promise.race([job, aborted])
-
-    const lines: OcrLine[] = []
-    let paragraph = 0
-    for (const block of data.blocks ?? []) {
-      for (const para of block.paragraphs) {
-        let used = false
-        for (const line of para.lines) {
-          const words: OcrWord[] = []
-          for (const word of line.words) {
-            const text = word.text.trim()
-            if (!text || word.confidence < MIN_WORD_CONFIDENCE) continue
-            const x0 = word.bbox.x0 / scaleX
-            const x1 = word.bbox.x1 / scaleX
-            const y0 = word.bbox.y0 / scaleY
-            const y1 = word.bbox.y1 / scaleY
-            if (x1 - x0 <= 0 || y1 - y0 <= 0) continue
-            words.push({ text, x0, y0, x1, y1 })
-          }
-          if (words.length === 0) continue
-          words.sort((a, b) => a.x0 - b.x0)
-          lines.push({
-            words,
-            paragraph,
-            x0: Math.min(...words.map((w) => w.x0)),
-            y0: Math.min(...words.map((w) => w.y0)),
-            x1: Math.max(...words.map((w) => w.x1)),
-            y1: Math.max(...words.map((w) => w.y1)),
-          })
-          used = true
-        }
-        if (used) paragraph++
-      }
-    }
-
-    return {
-      lines,
-      text: joinLines(lines.map((line) => ({ paragraph: line.paragraph, text: line.words.map((w) => w.text).join(' ') }))),
-      wordCount: lines.reduce((n, line) => n + line.words.length, 0),
-      confidence: data.confidence,
-    }
+    return await Promise.race([job, aborted])
   } catch (error) {
     // A failed read leaves the engine in an unknown state; start fresh next time.
     if (!signal.aborted && reading) dispose(current)
@@ -191,6 +183,50 @@ export async function recognize(
   } finally {
     signal.removeEventListener('abort', onAbort)
     if (listener === onProgress) listener = null
+  }
+}
+
+function parse(data: Page, scaleX: number, scaleY: number, confidences: Map<OcrWord, number>): OcrResult {
+  const lines: OcrLine[] = []
+  let paragraph = 0
+  for (const block of data.blocks ?? []) {
+    for (const para of block.paragraphs) {
+      let used = false
+      for (const line of para.lines) {
+        const words: OcrWord[] = []
+        for (const word of line.words) {
+          const text = word.text.trim()
+          if (!text || word.confidence < MIN_WORD_CONFIDENCE) continue
+          const x0 = word.bbox.x0 / scaleX
+          const x1 = word.bbox.x1 / scaleX
+          const y0 = word.bbox.y0 / scaleY
+          const y1 = word.bbox.y1 / scaleY
+          if (x1 - x0 <= 0 || y1 - y0 <= 0) continue
+          const parsed = { text, x0, y0, x1, y1 }
+          confidences.set(parsed, word.confidence)
+          words.push(parsed)
+        }
+        if (words.length === 0) continue
+        words.sort((a, b) => a.x0 - b.x0)
+        lines.push({
+          words,
+          paragraph,
+          x0: Math.min(...words.map((w) => w.x0)),
+          y0: Math.min(...words.map((w) => w.y0)),
+          x1: Math.max(...words.map((w) => w.x1)),
+          y1: Math.max(...words.map((w) => w.y1)),
+        })
+        used = true
+      }
+      if (used) paragraph++
+    }
+  }
+
+  return {
+    lines,
+    text: joinLines(lines.map((line) => ({ paragraph: line.paragraph, text: line.words.map((w) => w.text).join(' ') }))),
+    wordCount: lines.reduce((n, line) => n + line.words.length, 0),
+    confidence: data.confidence,
   }
 }
 

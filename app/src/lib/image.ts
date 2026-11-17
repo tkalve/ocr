@@ -65,6 +65,10 @@ const MAX_SIDE = 8192
  * applies EXIF orientation and rasterises SVGs exactly as they are displayed,
  * so OCR coordinates always line up with what the user sees. Small images are
  * upscaled because Tesseract is far more accurate on larger glyphs.
+ *
+ * The result is greyscale: given colour, Tesseract thresholds the channels
+ * separately and loses text whose contrast is mostly in one of them (dark
+ * print on a yellow label, say), while luminance keeps it.
  */
 export function rasterizeForOcr(image: LoadedImage): { canvas: HTMLCanvasElement; scaleX: number; scaleY: number } {
   const { width, height } = image
@@ -75,12 +79,23 @@ export function rasterizeForOcr(image: LoadedImage): { canvas: HTMLCanvasElement
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(width * scale))
   canvas.height = Math.max(1, Math.round(height * scale))
-  const ctx = canvas.getContext('2d')
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
   if (!ctx) throw new ImageError('Could not prepare the image for reading.')
   ctx.fillStyle = BACKDROP_COLORS[image.backdrop ?? 'light']
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(image.element, 0, 0, canvas.width, canvas.height)
+
+  const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const { data } = pixels
+  for (let i = 0; i < data.length; i += 4) {
+    // Rec. 601 luma in integer maths.
+    const luma = (data[i] * 77 + data[i + 1] * 150 + data[i + 2] * 29) >> 8
+    data[i] = luma
+    data[i + 1] = luma
+    data[i + 2] = luma
+  }
+  ctx.putImageData(pixels, 0, 0)
   return { canvas, scaleX: canvas.width / width, scaleY: canvas.height / height }
 }
