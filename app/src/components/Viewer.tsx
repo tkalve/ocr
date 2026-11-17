@@ -4,7 +4,8 @@ import { LANGUAGES } from '../lib/languages.ts'
 import { recognize, type OcrProgress, type OcrResult } from '../lib/ocr.ts'
 import { copyText, selectedText, selectionTouches } from '../lib/selection.ts'
 import { TextLayer } from './TextLayer.tsx'
-import { CopyIcon, ImageIcon, LogoIcon, MinusIcon, PlusIcon, RegionsIcon } from './icons.tsx'
+import { canCaptureScreen } from '../lib/source.ts'
+import { CopyIcon, ImageIcon, LogoIcon, MinusIcon, PlusIcon, RegionsIcon, ScreenIcon } from './icons.tsx'
 
 type OcrState =
   | { status: 'running'; progress: OcrProgress }
@@ -17,6 +18,7 @@ interface Props {
   language: string
   onLanguage: (code: string) => void
   onPick: () => void
+  onCapture: () => void
   onClose: () => void
   notify: (message: string, kind?: 'info' | 'error') => void
 }
@@ -30,7 +32,7 @@ const STARTING: OcrState = { status: 'running', progress: { label: 'Starting OCR
 const isEditable = (target: EventTarget | null) =>
   target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
 
-export function Viewer({ image, busy, language, onLanguage, onPick, onClose, notify }: Props) {
+export function Viewer({ image, busy, language, onLanguage, onPick, onCapture, onClose, notify }: Props) {
   // Results are tagged with the run that produced them, so a new run reads as "starting" immediately.
   const [stored, setStored] = useState<{ run: string; state: OcrState } | null>(null)
   const [attempt, setAttempt] = useState(0)
@@ -208,6 +210,19 @@ export function Viewer({ image, busy, language, onLanguage, onPick, onClose, not
           >
             <RegionsIcon />
           </button>
+
+          {canCaptureScreen && (
+            <button
+              type="button"
+              className="icon-button"
+              aria-label="Take a screenshot"
+              title="Take a screenshot"
+              onClick={onCapture}
+              disabled={busy !== null}
+            >
+              <ScreenIcon />
+            </button>
+          )}
 
           <button type="button" className="button primary" onClick={onPick} disabled={busy !== null}>
             <ImageIcon />

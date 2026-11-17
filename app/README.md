@@ -1,6 +1,6 @@
 # Image to text
 
-Drop, paste, upload or link an image, then select and copy the text right on top of it.
+Drop, paste, upload, link or screenshot an image, then select and copy the text right on top of it.
 
 OCR runs entirely in the browser with [Tesseract.js](https://github.com/naptha/tesseract.js). The engine and
 language models are served from this app (`/tesseract/*`, copied from `node_modules` by `vite.config.ts`),

@@ -323,13 +323,14 @@ kbd {
 
 .intake-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
 }
 
 .url-form {
   position: relative;
   display: flex;
-  flex: 1;
+  flex: 1 1 220px;
   min-width: 0;
   align-items: center;
   height: 44px;
@@ -852,6 +853,11 @@ kbd {
 @media (max-width: 480px) {
   .intake-row {
     flex-direction: column;
+    flex-wrap: nowrap;
+  }
+
+  .url-form {
+    flex: none;
   }
 
   .zoom-value {

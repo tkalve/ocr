@@ -89,3 +89,10 @@ export const LogoIcon = (p: Props) => (
     <path d="M9 9h6M12 9v6" />
   </Icon>
 )
+
+export const ScreenIcon = (p: Props) => (
+  <Icon {...p}>
+    <rect x="3" y="4" width="18" height="12" rx="2" />
+    <path d="M8 20h8M12 16v4" />
+  </Icon>
+)

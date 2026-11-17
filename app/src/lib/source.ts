@@ -119,3 +119,60 @@ export async function fetchImage(href: string): Promise<ImageSource> {
   }
   throw new Error("That host doesn't allow direct access, and the image proxy isn't available. Download the image and drop it here instead.")
 }
+
+/** Thrown when the user backs out of a prompt; not worth an error message. */
+export class CancelledError extends Error {}
+
+export const canCaptureScreen = typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getDisplayMedia === 'function'
+
+/** The browser's own picker can still be fading out in the first frames of a capture. */
+const CAPTURE_SETTLE_MS = 350
+
+/**
+ * Takes a screenshot with the Screen Capture API: the browser asks the user
+ * what to share, we keep a single frame and stop sharing straight away.
+ */
+export async function captureScreen(): Promise<ImageSource> {
+  if (!canCaptureScreen) throw new Error("This browser can't capture the screen.")
+
+  // Not every option is in TypeScript's DOM types yet; unsupported ones are ignored by browsers.
+  const options = { video: true, audio: false, selfBrowserSurface: 'exclude' }
+  let stream: MediaStream
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia(options)
+  } catch (error) {
+    const name = error instanceof DOMException ? error.name : ''
+    if (name === 'NotAllowedError' && /system/i.test((error as DOMException).message)) {
+      throw new Error("Your system settings don't allow this browser to record the screen.")
+    }
+    if (name === 'NotAllowedError' || name === 'AbortError') throw new CancelledError()
+    throw new Error('Screen capture could not be started.')
+  }
+
+  const video = document.createElement('video')
+  video.muted = true
+  video.playsInline = true
+  try {
+    video.srcObject = stream
+    await video.play()
+    await new Promise((resolve) => setTimeout(resolve, CAPTURE_SETTLE_MS))
+    if (stream.getVideoTracks().every((track) => track.readyState === 'ended')) throw new CancelledError()
+
+    const { videoWidth: width, videoHeight: height } = video
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!width || !height || !ctx) throw new Error('The screen capture came back empty.')
+    ctx.drawImage(video, 0, 0, width, height)
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+    if (!blob) throw new Error('The screen capture came back empty.')
+    return { blob, name: 'Screenshot' }
+  } catch (error) {
+    if (error instanceof CancelledError || (error instanceof Error && error.message.startsWith('The screen capture'))) throw error
+    throw new Error('Screen capture failed. Try again.')
+  } finally {
+    for (const track of stream.getTracks()) track.stop()
+    video.srcObject = null
+  }
+}

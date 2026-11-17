@@ -4,7 +4,16 @@ import { Viewer } from './components/Viewer.tsx'
 import { UploadIcon } from './components/icons.tsx'
 import { loadImage, type LoadedImage } from './lib/image.ts'
 import { loadLanguage, saveLanguage } from './lib/languages.ts'
-import { extract, fetchImage, normalizeUrl, readClipboard, type Extracted, type ImageSource } from './lib/source.ts'
+import {
+  CancelledError,
+  captureScreen,
+  extract,
+  fetchImage,
+  normalizeUrl,
+  readClipboard,
+  type Extracted,
+  type ImageSource,
+} from './lib/source.ts'
 
 interface Toast {
   id: number
@@ -58,7 +67,9 @@ export default function App() {
         document.getSelection()?.removeAllRanges()
         setImage(loaded)
       } catch (error) {
-        if (id === request.current) notify(error instanceof Error ? error.message : 'Could not open that image.', 'error')
+        if (id === request.current && !(error instanceof CancelledError)) {
+          notify(error instanceof Error ? error.message : 'Could not open that image.', 'error')
+        }
       } finally {
         if (id === request.current) setBusy(null)
       }
@@ -71,6 +82,7 @@ export default function App() {
     [open],
   )
   const openUrl = useCallback((url: string) => open('Fetching image…', () => fetchImage(url)), [open])
+  const capture = useCallback(() => void open('Choose what to capture…', captureScreen), [open])
 
   const openExtracted = useCallback(
     (found: Extracted, emptyMessage: string) => {
@@ -175,11 +187,12 @@ export default function App() {
             saveLanguage(code)
           }}
           onPick={pick}
+          onCapture={capture}
           onClose={close}
           notify={notify}
         />
       ) : (
-        <Landing busy={busy} onPick={pick} onPaste={pasteFromClipboard} onUrl={submitUrl} />
+        <Landing busy={busy} onPick={pick} onPaste={pasteFromClipboard} onCapture={capture} onUrl={submitUrl} />
       )}
 
       <input

@@ -1,14 +1,16 @@
 import { useState, type FormEvent } from 'react'
-import { ArrowIcon, ClipboardIcon, LinkIcon, LogoIcon, UploadIcon } from './icons.tsx'
+import { canCaptureScreen } from '../lib/source.ts'
+import { ArrowIcon, ClipboardIcon, LinkIcon, LogoIcon, ScreenIcon, UploadIcon } from './icons.tsx'
 
 interface Props {
   busy: string | null
   onPick: () => void
   onPaste: () => void
+  onCapture: () => void
   onUrl: (value: string) => boolean
 }
 
-export function Landing({ busy, onPick, onPaste, onUrl }: Props) {
+export function Landing({ busy, onPick, onPaste, onCapture, onUrl }: Props) {
   const [url, setUrl] = useState('')
 
   function submit(event: FormEvent) {
@@ -49,7 +51,7 @@ export function Landing({ busy, onPick, onPaste, onUrl }: Props) {
                 autoComplete="off"
                 autoCapitalize="off"
                 spellCheck={false}
-                placeholder="Paste a link to an image"
+                placeholder="Paste an image link"
                 aria-label="Image URL"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
@@ -63,6 +65,12 @@ export function Landing({ busy, onPick, onPaste, onUrl }: Props) {
               <ClipboardIcon />
               Paste
             </button>
+            {canCaptureScreen && (
+              <button type="button" className="button" onClick={onCapture} disabled={busy !== null}>
+                <ScreenIcon />
+                Screenshot
+              </button>
+            )}
           </div>
         </section>
 
