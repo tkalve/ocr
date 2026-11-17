@@ -249,6 +249,7 @@ kbd {
   line-height: 1.1;
   letter-spacing: -0.03em;
   font-weight: 700;
+  text-wrap: balance;
 }
 
 .hero p {
@@ -374,6 +375,32 @@ kbd {
   text-align: center;
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+.ui-language {
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  margin-top: -12px;
+}
+
+.ui-language button {
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.ui-language button:hover {
+  color: var(--text);
+}
+
+.ui-language button.active {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 550;
 }
 
 /* ---------- Viewer ---------- */
@@ -663,6 +690,12 @@ kbd {
     fade-out 0.6s ease-in 4s forwards;
 }
 
+.status-pill.note {
+  color: var(--muted);
+  font-weight: 500;
+  pointer-events: none;
+}
+
 @keyframes rise {
   from {
     opacity: 0;
@@ -675,6 +708,41 @@ kbd {
     opacity: 0;
     visibility: hidden;
   }
+}
+
+/* The part of the image that is read: outlined, with the rest dimmed. */
+.area {
+  position: absolute;
+  border: 2px solid var(--accent);
+  border-radius: 3px;
+  box-shadow: 0 0 0 9999px rgba(8, 10, 16, 0.5);
+  pointer-events: none;
+}
+
+.area-clear {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transform: translate(-50%, -50%);
+}
+
+.area-clear:hover {
+  background: color-mix(in srgb, var(--accent) 86%, white);
+}
+
+.area-draw {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  touch-action: none;
 }
 
 /* ---------- Text panel ---------- */
@@ -847,6 +915,14 @@ kbd {
 
   .toolbar {
     padding: 8px 10px;
+  }
+
+  /* Too many controls for one row on a phone: let them flow onto a second one. */
+  .toolbar-group {
+    flex: 1;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    min-width: 0;
   }
 }
 

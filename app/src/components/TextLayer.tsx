@@ -83,18 +83,16 @@ function layoutLine(line: OcrLine, index: number): LineLayout {
 
 interface Props {
   result: OcrResult
-  width: number
-  height: number
   scale: number
   showRegions: boolean
   ref: Ref<HTMLDivElement>
 }
 
-export const TextLayer = memo(function TextLayer({ result, width, height, scale, showRegions, ref }: Props) {
+export const TextLayer = memo(function TextLayer({ result, scale, showRegions, ref }: Props) {
   const lines = useMemo(() => result.lines.map(layoutLine), [result])
   const { frame } = result
-  // The frame shares the image's centre; turn it back onto the image when the text was straightened for reading.
-  const transform = `scale(${scale}) translate(${width / 2}px, ${height / 2}px) rotate(${frame.rotation}rad) translate(${-frame.width / 2}px, ${-frame.height / 2}px)`
+  // Put the frame's centre where it belongs on the image, turned back if the text was straightened for reading.
+  const transform = `scale(${scale}) translate(${frame.centerX}px, ${frame.centerY}px) rotate(${frame.rotation}rad) translate(${-frame.width / 2}px, ${-frame.height / 2}px)`
   return (
     <div
       ref={ref}

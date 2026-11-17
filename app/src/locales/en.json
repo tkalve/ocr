@@ -1,0 +1,114 @@
+{
+  "app": {
+    "title": "Professor Kalve's Optical Miracle Machine",
+    "description": "Copy text from any image. Text recognition that runs entirely in your browser."
+  },
+  "landing": {
+    "tagline": "Copy text from any image. Drop in a screenshot, photo or scan, then select the text right on top of it.",
+    "drop": "Drop an image here, or click to browse",
+    "pasteHint": "or paste one with <kbd>⌘V</kbd> / <kbd>Ctrl+V</kbd>",
+    "wait": "One moment…",
+    "urlPlaceholder": "Paste an image link",
+    "urlLabel": "Image URL",
+    "urlSubmit": "Load image from URL",
+    "paste": "Paste",
+    "screenshot": "Screenshot",
+    "privacy": "Text recognition runs entirely in your browser. Your images are never uploaded.",
+    "uiLanguage": "Language",
+    "dropOverlay": "Drop to read the text"
+  },
+  "busy": {
+    "opening": "Opening image…",
+    "fetching": "Fetching image…",
+    "capturing": "Choose what to capture…"
+  },
+  "viewer": {
+    "startOver": "Start over",
+    "textLanguage": "Language of the text",
+    "zoom": "Zoom",
+    "zoomOut": "Zoom out",
+    "zoomIn": "Zoom in",
+    "fit": "Fit to window",
+    "highlight": "Highlight detected text",
+    "takeScreenshot": "Take a screenshot",
+    "selectArea": "Select an area to read",
+    "areaHint": "Drag on the image to mark the area to read",
+    "clearArea": "Read the whole image",
+    "newImage": "New image",
+    "copySelection": "Copy selection",
+    "selectHint": "Drag across the image to select text",
+    "panelLabel": "Recognised text",
+    "text": "Text",
+    "failed": "Something went wrong",
+    "readFailed": "Text recognition failed. Check your connection and try again.",
+    "words_one": "{{count}} word",
+    "words_other": "{{count}} words",
+    "confidence": "{{percent}}% confidence",
+    "nothing": "Nothing to read",
+    "copyAll": "Copy all",
+    "tryAgain": "Try again",
+    "noText": "No text was found in this image.",
+    "wrongLanguage": "If the text is in another language, pick it above."
+  },
+  "progress": {
+    "starting": "Starting OCR engine",
+    "loadingModel": "Loading language model",
+    "reading": "Reading text",
+    "lookingCloser": "Looking closer"
+  },
+  "toast": {
+    "copied": "Copied to clipboard",
+    "clipboardDenied": "Could not access the clipboard."
+  },
+  "names": {
+    "pasted": "Pasted image",
+    "screenshot": "Screenshot"
+  },
+  "languages": {
+    "auto": "Auto",
+    "dan": "Danish",
+    "deu": "German",
+    "eng": "English",
+    "fra": "French",
+    "ita": "Italian",
+    "lat": "Latin",
+    "nld": "Dutch",
+    "nor": "Norwegian",
+    "por": "Portuguese",
+    "spa": "Spanish",
+    "swe": "Swedish"
+  },
+  "errors": {
+    "openFailed": "Could not open that image.",
+    "notLink": "That doesn't look like a link to an image.",
+    "clipboardEmpty": "There is no image or image link on your clipboard.",
+    "clipboardRead": "Could not read the clipboard.",
+    "pasteEmpty": "That paste has no image or image link in it.",
+    "dropEmpty": "That drop didn't contain an image.",
+    "emptyFile": "That file is empty.",
+    "notImage": "That doesn't look like an image this browser can open.",
+    "noSize": "That image has no size, so there is nothing to read.",
+    "prepare": "Could not prepare the image for reading.",
+    "noClipboardButton": "This browser can't read the clipboard from a button. Press ⌘V / Ctrl+V to paste instead.",
+    "clipboardBlocked": "Clipboard access was blocked. Press ⌘V / Ctrl+V to paste instead.",
+    "pastedData": "That pasted image data could not be read.",
+    "urlLoad": "Could not load that URL. Check your connection and try again.",
+    "downloadFailed": "That image could not be downloaded (it may be larger than 25 MB).",
+    "noProxy": "That host doesn't allow direct access, and the image proxy isn't available. Download the image and drop it here instead.",
+    "captureUnsupported": "This browser can't capture the screen.",
+    "captureSystem": "Your system settings don't allow this browser to record the screen.",
+    "captureStart": "Screen capture could not be started.",
+    "captureEmpty": "The screen capture came back empty.",
+    "captureFailed": "Screen capture failed. Try again.",
+    "api": {
+      "forbidden": "This endpoint can only be used by the app itself.",
+      "invalid_url": "That is not a valid public http(s) URL.",
+      "bad_redirect": "The image host redirected somewhere we cannot follow.",
+      "timeout": "The image host took too long to respond.",
+      "unreachable": "Could not reach the image host.",
+      "upstream_status": "The image host responded with HTTP {{status}}.",
+      "not_image": "That URL points to {{type}}, not an image.",
+      "too_large": "That image is too large (25 MB max)."
+    }
+  }
+}

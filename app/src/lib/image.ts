@@ -1,3 +1,5 @@
+import i18n from '../i18n.ts'
+
 export interface LoadedImage {
   /** Object URL for display. Owned by whoever holds the LoadedImage. */
   url: string
@@ -12,7 +14,7 @@ export interface LoadedImage {
 export class ImageError extends Error {}
 
 export async function loadImage(blob: Blob, name: string): Promise<LoadedImage> {
-  if (blob.size === 0) throw new ImageError('That file is empty.')
+  if (blob.size === 0) throw new ImageError(i18n.t('errors.emptyFile'))
   const url = URL.createObjectURL(blob)
   const element = new Image()
   element.decoding = 'async'
@@ -21,12 +23,12 @@ export async function loadImage(blob: Blob, name: string): Promise<LoadedImage> 
     await element.decode()
   } catch {
     URL.revokeObjectURL(url)
-    throw new ImageError("That doesn't look like an image this browser can open.")
+    throw new ImageError(i18n.t('errors.notImage'))
   }
   const { naturalWidth: width, naturalHeight: height } = element
   if (!width || !height) {
     URL.revokeObjectURL(url)
-    throw new ImageError('That image has no size, so there is nothing to read.')
+    throw new ImageError(i18n.t('errors.noSize'))
   }
   return { url, name, width, height, backdrop: detectBackdrop(element), element }
 }
@@ -60,12 +62,23 @@ export const BACKDROP_COLORS = { light: '#ffffff', dark: '#14161c' } as const
 const MAX_PIXELS = 16_000_000
 const MAX_SIDE = 8192
 
-/** What OCR reads: the image, possibly rotated upright, in its own coordinate frame. */
-export interface OcrFrame {
-  canvas: HTMLCanvasElement
-  /** Size of the frame in image pixels. It grows to hold the whole image when rotated. */
+/** A rectangle in image pixels. */
+export interface Region {
+  x: number
+  y: number
   width: number
   height: number
+}
+
+/** What OCR reads: the image or a part of it, possibly rotated upright, in its own coordinate frame. */
+export interface OcrFrame {
+  canvas: HTMLCanvasElement
+  /** Size of the frame in image pixels. It grows to hold everything that is read when rotated. */
+  width: number
+  height: number
+  /** Where the centre of the frame lies on the image. */
+  centerX: number
+  centerY: number
   /** Canvas pixels per image pixel. */
   scaleX: number
   scaleY: number
@@ -73,8 +86,8 @@ export interface OcrFrame {
   rotation: number
 }
 
-/** The colour around the edge of the image, used to fill the corners a rotation exposes. */
-function edgeColor(image: LoadedImage): string {
+/** The colour around the edge of an area, used to fill the corners a rotation exposes. */
+function edgeColor(image: LoadedImage, area: Region): string {
   const size = 32
   const canvas = document.createElement('canvas')
   canvas.width = size
@@ -84,7 +97,8 @@ function edgeColor(image: LoadedImage): string {
   if (!ctx) return backdrop
   ctx.fillStyle = backdrop
   ctx.fillRect(0, 0, size, size)
-  ctx.drawImage(image.element, 0, 0, size, size)
+  ctx.setTransform(size / area.width, 0, 0, size / area.height, 0, 0)
+  ctx.drawImage(image.element, -area.x, -area.y, image.width, image.height)
   const { data } = ctx.getImageData(0, 0, size, size)
   const channels: number[][] = [[], [], []]
   for (let y = 0; y < size; y++) {
@@ -108,13 +122,17 @@ function edgeColor(image: LoadedImage): string {
  * print on a yellow label, say), while luminance keeps it.
  *
  * `rotation` is the tilt of the text (see estimateSkew); the image is turned
- * back by that much so the text lies level in the frame.
+ * back by that much so the text lies level in the frame. With a `region`,
+ * only that part of the image is rendered and read.
  */
-export function rasterizeForOcr(image: LoadedImage, rotation = 0): OcrFrame {
+export function rasterizeForOcr(image: LoadedImage, rotation = 0, region: Region | null = null): OcrFrame {
+  const area = region ?? { x: 0, y: 0, width: image.width, height: image.height }
   const sin = Math.abs(Math.sin(rotation))
   const cos = Math.abs(Math.cos(rotation))
-  const width = image.width * cos + image.height * sin
-  const height = image.width * sin + image.height * cos
+  const width = area.width * cos + area.height * sin
+  const height = area.width * sin + area.height * cos
+  const centerX = area.x + area.width / 2
+  const centerY = area.y + area.height / 2
   const longest = Math.max(width, height)
   let scale = longest < 700 ? 3 : longest < 1600 ? 2 : 1
   scale = Math.min(scale, Math.sqrt(MAX_PIXELS / (width * height)), MAX_SIDE / longest)
@@ -125,19 +143,27 @@ export function rasterizeForOcr(image: LoadedImage, rotation = 0): OcrFrame {
   const scaleX = canvas.width / width
   const scaleY = canvas.height / height
   const ctx = canvas.getContext('2d', { willReadFrequently: true })
-  if (!ctx) throw new ImageError('Could not prepare the image for reading.')
-  ctx.fillStyle = rotation === 0 ? BACKDROP_COLORS[image.backdrop ?? 'light'] : edgeColor(image)
+  if (!ctx) throw new ImageError(i18n.t('errors.prepare'))
+  ctx.fillStyle = rotation === 0 ? BACKDROP_COLORS[image.backdrop ?? 'light'] : edgeColor(image, area)
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   ctx.imageSmoothingEnabled = true
   ctx.imageSmoothingQuality = 'high'
+
+  // From here on we draw in image coordinates, with the centre of the area at the centre of the canvas.
+  ctx.save()
   ctx.setTransform(scaleX, 0, 0, scaleY, canvas.width / 2, canvas.height / 2)
   ctx.rotate(-rotation)
+  ctx.translate(-centerX, -centerY)
+  // Nothing outside the area may be read, also not in the corners a rotation adds.
+  ctx.beginPath()
+  ctx.rect(area.x, area.y, area.width, area.height)
+  ctx.clip()
   if (rotation !== 0 && image.backdrop) {
     ctx.fillStyle = BACKDROP_COLORS[image.backdrop]
-    ctx.fillRect(-image.width / 2, -image.height / 2, image.width, image.height)
+    ctx.fillRect(area.x, area.y, area.width, area.height)
   }
-  ctx.drawImage(image.element, -image.width / 2, -image.height / 2, image.width, image.height)
-  ctx.setTransform(1, 0, 0, 1, 0, 0)
+  ctx.drawImage(image.element, 0, 0, image.width, image.height)
+  ctx.restore()
 
   const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height)
   const { data } = pixels
@@ -149,5 +175,5 @@ export function rasterizeForOcr(image: LoadedImage, rotation = 0): OcrFrame {
     data[i + 2] = luma
   }
   ctx.putImageData(pixels, 0, 0)
-  return { canvas, width, height, scaleX, scaleY, rotation }
+  return { canvas, width, height, centerX, centerY, scaleX, scaleY, rotation }
 }

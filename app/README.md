@@ -1,4 +1,4 @@
-# Image to text
+# Professor Kalve's Optical Miracle Machine
 
 Drop, paste, upload, link or screenshot an image, then select and copy the text right on top of it.
 
@@ -28,10 +28,16 @@ Every installed `@tesseract.js-data/*` dependency becomes a selectable language.
 npm install @tesseract.js-data/fin
 ```
 
-and give it a display name in `src/lib/languages.ts`.
+and give it a display name under `languages` in `src/locales/en.json` and `src/locales/nb.json`.
 
 The default choice, "Auto", reads the image in English and Norwegian side by side and keeps whichever
-reading holds the most confidently read text (`AUTO_LANGUAGES` in the same file).
+reading holds the most confidently read text (`AUTO_LANGUAGES` in `src/lib/languages.ts`).
+
+## Translations
+
+The interface is translated with [react-i18next](https://react.i18next.com) into English and Norwegian
+(`src/locales/*.json`, set up in `src/i18n.ts`). It follows the browser language, and the choice on the
+start page is remembered. Both files must have the same keys; the build fails otherwise.
 
 ## Deploy
 

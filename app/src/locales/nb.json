@@ -1,0 +1,114 @@
+{
+  "app": {
+    "title": "Professor Kalves Optiske Mirakelmaskin",
+    "description": "Kopier tekst fra et hvilket som helst bilde. Tekstgjenkjenning som kjører helt i nettleseren din."
+  },
+  "landing": {
+    "tagline": "Kopier tekst fra et hvilket som helst bilde. Slipp inn et skjermbilde, foto eller skann, og marker teksten rett oppå bildet.",
+    "drop": "Slipp et bilde her, eller klikk for å velge en fil",
+    "pasteHint": "eller lim inn med <kbd>⌘V</kbd> / <kbd>Ctrl+V</kbd>",
+    "wait": "Et øyeblikk …",
+    "urlPlaceholder": "Lim inn en bildelenke",
+    "urlLabel": "Bildeadresse",
+    "urlSubmit": "Hent bilde fra lenken",
+    "paste": "Lim inn",
+    "screenshot": "Skjermbilde",
+    "privacy": "Tekstgjenkjenningen kjører helt i nettleseren din. Bildene dine lastes aldri opp.",
+    "uiLanguage": "Språk",
+    "dropOverlay": "Slipp for å lese teksten"
+  },
+  "busy": {
+    "opening": "Åpner bildet …",
+    "fetching": "Henter bildet …",
+    "capturing": "Velg hva som skal fanges …"
+  },
+  "viewer": {
+    "startOver": "Start på nytt",
+    "textLanguage": "Språket i teksten",
+    "zoom": "Zoom",
+    "zoomOut": "Zoom ut",
+    "zoomIn": "Zoom inn",
+    "fit": "Tilpass til vinduet",
+    "highlight": "Vis hvor det ble funnet tekst",
+    "takeScreenshot": "Ta et skjermbilde",
+    "selectArea": "Velg et område som skal leses",
+    "areaHint": "Dra på bildet for å merke området som skal leses",
+    "clearArea": "Les hele bildet",
+    "newImage": "Nytt bilde",
+    "copySelection": "Kopier markert tekst",
+    "selectHint": "Dra over bildet for å markere tekst",
+    "panelLabel": "Gjenkjent tekst",
+    "text": "Tekst",
+    "failed": "Noe gikk galt",
+    "readFailed": "Tekstgjenkjenningen mislyktes. Sjekk tilkoblingen og prøv igjen.",
+    "words_one": "{{count}} ord",
+    "words_other": "{{count}} ord",
+    "confidence": "{{percent}} % sikkerhet",
+    "nothing": "Ingenting å lese",
+    "copyAll": "Kopier alt",
+    "tryAgain": "Prøv igjen",
+    "noText": "Fant ingen tekst i dette bildet.",
+    "wrongLanguage": "Hvis teksten er på et annet språk, velg det over."
+  },
+  "progress": {
+    "starting": "Starter tekstgjenkjenningen",
+    "loadingModel": "Laster språkmodell",
+    "reading": "Leser tekst",
+    "lookingCloser": "Ser nærmere etter"
+  },
+  "toast": {
+    "copied": "Kopiert til utklippstavlen",
+    "clipboardDenied": "Fikk ikke tilgang til utklippstavlen."
+  },
+  "names": {
+    "pasted": "Innlimt bilde",
+    "screenshot": "Skjermbilde"
+  },
+  "languages": {
+    "auto": "Auto",
+    "dan": "Dansk",
+    "deu": "Tysk",
+    "eng": "Engelsk",
+    "fra": "Fransk",
+    "ita": "Italiensk",
+    "lat": "Latin",
+    "nld": "Nederlandsk",
+    "nor": "Norsk",
+    "por": "Portugisisk",
+    "spa": "Spansk",
+    "swe": "Svensk"
+  },
+  "errors": {
+    "openFailed": "Kunne ikke åpne bildet.",
+    "notLink": "Det ser ikke ut som en lenke til et bilde.",
+    "clipboardEmpty": "Det er ikke noe bilde eller noen bildelenke på utklippstavlen.",
+    "clipboardRead": "Kunne ikke lese utklippstavlen.",
+    "pasteEmpty": "Det du limte inn, inneholder ikke noe bilde eller noen bildelenke.",
+    "dropEmpty": "Det du slapp, inneholdt ikke noe bilde.",
+    "emptyFile": "Filen er tom.",
+    "notImage": "Det ser ikke ut som et bilde denne nettleseren kan åpne.",
+    "noSize": "Bildet har ingen størrelse, så det er ingenting å lese.",
+    "prepare": "Kunne ikke klargjøre bildet for lesing.",
+    "noClipboardButton": "Denne nettleseren kan ikke lese utklippstavlen fra en knapp. Trykk ⌘V / Ctrl+V for å lime inn i stedet.",
+    "clipboardBlocked": "Tilgangen til utklippstavlen ble blokkert. Trykk ⌘V / Ctrl+V for å lime inn i stedet.",
+    "pastedData": "Kunne ikke lese bildedataene du limte inn.",
+    "urlLoad": "Kunne ikke laste adressen. Sjekk tilkoblingen og prøv igjen.",
+    "downloadFailed": "Bildet kunne ikke lastes ned (det kan være større enn 25 MB).",
+    "noProxy": "Nettstedet tillater ikke direkte tilgang, og bildeproxyen er ikke tilgjengelig. Last ned bildet og slipp det her i stedet.",
+    "captureUnsupported": "Denne nettleseren kan ikke ta skjermbilder.",
+    "captureSystem": "Systeminnstillingene tillater ikke at denne nettleseren tar opp skjermen.",
+    "captureStart": "Kunne ikke starte skjermopptaket.",
+    "captureEmpty": "Skjermbildet ble tomt.",
+    "captureFailed": "Skjermbildet mislyktes. Prøv igjen.",
+    "api": {
+      "forbidden": "Dette endepunktet kan bare brukes av appen selv.",
+      "invalid_url": "Det er ikke en gyldig, offentlig http(s)-adresse.",
+      "bad_redirect": "Bildeverten videresendte til et sted vi ikke kan følge.",
+      "timeout": "Bildeverten brukte for lang tid på å svare.",
+      "unreachable": "Fikk ikke kontakt med bildeverten.",
+      "upstream_status": "Bildeverten svarte med HTTP {{status}}.",
+      "not_image": "Adressen peker til {{type}}, ikke et bilde.",
+      "too_large": "Bildet er for stort (maks 25 MB)."
+    }
+  }
+}

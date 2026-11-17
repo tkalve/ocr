@@ -1,5 +1,5 @@
 import { createWorker, PSM, type ImageLike, type Page, type Worker } from 'tesseract.js'
-import { rasterizeForOcr, type LoadedImage, type OcrFrame } from './image.ts'
+import { rasterizeForOcr, type LoadedImage, type OcrFrame, type Region } from './image.ts'
 import { estimateSkew } from './skew.ts'
 
 export interface OcrWord {
@@ -26,11 +26,12 @@ export interface OcrResult {
   /** The language the text was read as. */
   language: string
   /**
-   * The coordinate frame of the lines: the image itself, or, when its text is
-   * tilted, a larger box that shares the image's centre and must be turned by
-   * `rotation` (radians, clockwise) to lie on the image.
+   * The coordinate frame of the lines: a box centred on (`centerX`, `centerY`)
+   * of the image. It is the image itself, the area that was read, or, when the
+   * text is tilted, a larger box that must be turned by `rotation` (radians,
+   * clockwise) about its centre to lie on the image.
    */
-  frame: { width: number; height: number; rotation: number }
+  frame: { width: number; height: number; centerX: number; centerY: number; rotation: number }
   /** Lines in reading order, in frame coordinates (image pixels). */
   lines: OcrLine[]
   text: string
@@ -40,13 +41,24 @@ export interface OcrResult {
 }
 
 export interface OcrProgress {
-  label: string
+  step: 'starting' | 'loadingModel' | 'reading' | 'lookingCloser'
   /** 0–1, or null when the step has no measurable progress. */
   value: number | null
 }
 
 /** Words Tesseract is this unsure about are almost always noise from non-text areas. */
 const MIN_WORD_CONFIDENCE = 20
+
+/**
+ * Stray marks: borders, specks and the edges of things read as "|", "!" or "=".
+ * Punctuation standing on its own needs this much confidence to be kept.
+ */
+const MIN_MARK_CONFIDENCE = 60
+
+/** A line of at most two letters or digits is kept only when something on it was read with this confidence. */
+const MIN_SHORT_LINE_CONFIDENCE = 75
+
+const letters = (text: string) => text.match(/[\p{L}\p{N}]/gu)?.length ?? 0
 
 /** A line this much further down than the usual line spacing starts a new paragraph. */
 const PARAGRAPH_GAP = 1.4
@@ -83,11 +95,11 @@ interface Engine {
 const engines = new Map<string, Engine>()
 let listener: ((lang: string, progress: OcrProgress) => void) | null = null
 
-const STARTING: OcrProgress = { label: 'Starting OCR engine', value: null }
+const STARTING: OcrProgress = { step: 'starting', value: null }
 
 function describe(status: string, progress: number): OcrProgress {
-  if (status.startsWith('recognizing')) return { label: 'Reading text', value: progress }
-  if (status.startsWith('loading language')) return { label: 'Loading language model', value: null }
+  if (status.startsWith('recognizing')) return { step: 'reading', value: progress }
+  if (status.startsWith('loading language')) return { step: 'loadingModel', value: null }
   return STARTING
 }
 
@@ -136,7 +148,8 @@ interface Reading {
 /**
  * Runs OCR on an image. With several languages the image is read in each of
  * them side by side, and the reading with the most confidently read text wins
- * (the first language on a tie).
+ * (the first language on a tie). With a region, only that part of the image
+ * is read.
  *
  * Only one recognition runs at a time: aborting the signal while an engine is
  * reading tears it down, so the next call starts immediately. An engine that
@@ -145,13 +158,14 @@ interface Reading {
 export async function recognize(
   image: LoadedImage,
   langs: string[],
+  region: Region | null,
   onProgress: (progress: OcrProgress) => void,
   signal: AbortSignal,
 ): Promise<OcrResult> {
   signal.throwIfAborted()
   // Engines for languages that are no longer wanted give their memory back.
   for (const engine of [...engines.values()]) if (!langs.includes(engine.lang)) dispose(engine)
-  const upright = rasterizeForOcr(image)
+  const upright = rasterizeForOcr(image, 0, region)
   // Start the engines right away; they load while the image is being prepared.
   for (const lang of langs) acquire(lang)
 
@@ -159,7 +173,7 @@ export async function recognize(
   // too and wins unless straightening really helped, so a misjudged tilt (a
   // picture full of slanted lines, say) can never make the result worse.
   const skew = estimateSkew(upright.canvas)
-  const frames = skew === 0 ? [upright] : [rasterizeForOcr(image, skew), upright]
+  const frames = skew === 0 ? [upright] : [rasterizeForOcr(image, skew, region), upright]
   const inputs: { frame: OcrFrame; png: Uint8Array }[] = []
   for (const frame of frames) inputs.push({ frame, png: await encodePng(frame.canvas) })
   signal.throwIfAborted()
@@ -170,7 +184,7 @@ export async function recognize(
     states.set(lang, progress)
     const all = langs.map((l) => states.get(l) ?? STARTING)
     const waiting = all.find((state) => state.value === null)
-    onProgress(waiting ?? { label: all[0].label, value: all.reduce((sum, state) => sum + (state.value ?? 0), 0) / all.length })
+    onProgress(waiting ?? { step: all[0].step, value: all.reduce((sum, state) => sum + (state.value ?? 0), 0) / all.length })
   }
   listener = report
   const reading = new Set<Engine>()
@@ -195,7 +209,7 @@ export async function recognize(
           for (const mode of LAYOUT_MODES) {
             signal.throwIfAborted()
             reading.add(engine)
-            if (!first) report(lang, { label: 'Looking closer', value: null })
+            if (!first) report(lang, { step: 'lookingCloser', value: null })
             first = false
             await worker.setParameters({ tessedit_pageseg_mode: mode })
             signal.throwIfAborted()
@@ -210,7 +224,7 @@ export async function recognize(
           // Later frames are less processed, so they win ties.
           if (found && (!best || found.score >= best.score)) best = found
         }
-        report(lang, { label: 'Reading text', value: 1 })
+        report(lang, { step: 'reading', value: 1 })
         return best!
       })
     })
@@ -238,6 +252,7 @@ function parse(data: Page, frame: OcrFrame, language: string, confidences: Map<O
         for (const word of line.words) {
           const text = word.text.trim()
           if (!text || word.confidence < MIN_WORD_CONFIDENCE) continue
+          if (letters(text) === 0 && word.confidence < MIN_MARK_CONFIDENCE) continue
           const x0 = word.bbox.x0 / scaleX
           const x1 = word.bbox.x1 / scaleX
           const y0 = word.bbox.y0 / scaleY
@@ -248,6 +263,9 @@ function parse(data: Page, frame: OcrFrame, language: string, confidences: Map<O
           words.push(parsed)
         }
         if (words.length === 0) continue
+        const lettersOnLine = words.reduce((sum, word) => sum + letters(word.text), 0)
+        const bestConfidence = Math.max(...words.map((word) => confidences.get(word) ?? 0))
+        if (lettersOnLine <= 2 && bestConfidence < MIN_SHORT_LINE_CONFIDENCE) continue
         words.sort((a, b) => a.x0 - b.x0)
         const y1 = Math.max(...words.map((w) => w.y1))
         const base = line.baseline
@@ -266,16 +284,41 @@ function parse(data: Page, frame: OcrFrame, language: string, confidences: Map<O
       }
     }
   }
-  assignParagraphs(lines)
+  const kept = withoutGhostLines(lines)
+  assignParagraphs(kept)
 
   return {
     language,
-    frame: { width: frame.width, height: frame.height, rotation: frame.rotation },
-    lines,
-    text: joinLines(lines.map((line) => ({ paragraph: line.paragraph, text: line.words.map((w) => w.text).join(' ') }))),
-    wordCount: lines.reduce((n, line) => n + line.words.length, 0),
+    frame: {
+      width: frame.width,
+      height: frame.height,
+      centerX: frame.centerX,
+      centerY: frame.centerY,
+      rotation: frame.rotation,
+    },
+    lines: kept,
+    text: joinLines(kept.map((line) => ({ paragraph: line.paragraph, text: line.words.map((w) => w.text).join(' ') }))),
+    wordCount: kept.reduce((n, line) => n + line.words.length, 0),
     confidence: data.confidence,
   }
+}
+
+/**
+ * Drops "ghost" lines: the dots and tall strokes of a line of handwriting are
+ * sometimes split off and read as a line of their own ("." "]" "di" "|"). Such
+ * a line lies within the band of the real line, inside its width, and holds
+ * only a fraction of its text.
+ */
+function withoutGhostLines(lines: OcrLine[]): OcrLine[] {
+  const size = (line: OcrLine) => line.words.reduce((sum, word) => sum + letters(word.text), 0)
+  return lines.filter((line) => {
+    const height = line.y1 - line.y0
+    return !lines.some((host) => {
+      if (host === line || size(host) < size(line) * 3) return false
+      const overlap = Math.min(line.y1, host.y1) - Math.max(line.y0, host.y0)
+      return overlap >= height / 2 && line.x0 >= host.x0 - height && line.x1 <= host.x1 + height
+    })
+  })
 }
 
 /**

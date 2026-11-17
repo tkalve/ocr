@@ -1,3 +1,8 @@
+import i18n from '../i18n.ts'
+
+/** What the app is doing while it gets hold of an image. */
+export type Busy = 'opening' | 'fetching' | 'capturing'
+
 export interface ImageSource {
   blob: Blob
   name: string
@@ -47,18 +52,18 @@ export function extract(data: DataTransfer): Extracted {
 
 /** Reads an image (or image URL) via the async clipboard API, for the "Paste" button. */
 export async function readClipboard(): Promise<Extracted> {
-  if (!navigator.clipboard?.read) throw new Error('Press ⌘V / Ctrl+V to paste — this browser has no clipboard button access.')
+  if (!navigator.clipboard?.read) throw new Error(i18n.t('errors.noClipboardButton'))
   let items: ClipboardItem[]
   try {
     items = await navigator.clipboard.read()
   } catch {
-    throw new Error('Clipboard access was blocked. Press ⌘V / Ctrl+V to paste instead.')
+    throw new Error(i18n.t('errors.clipboardBlocked'))
   }
   for (const item of items) {
     const type = item.types.find((t) => t.startsWith('image/'))
     if (type) {
       const blob = await item.getType(type)
-      return { kind: 'file', file: new File([blob], 'Pasted image', { type }) }
+      return { kind: 'file', file: new File([blob], i18n.t('names.pasted'), { type }) }
     }
   }
   for (const item of items) {
@@ -87,8 +92,8 @@ export async function fetchImage(href: string): Promise<ImageSource> {
   const url = new URL(href)
   if (url.protocol === 'data:' || url.protocol === 'blob:') {
     const response = await fetch(href).catch(() => null)
-    if (!response?.ok) throw new Error('That pasted image data could not be read.')
-    return { blob: await response.blob(), name: 'Pasted image' }
+    if (!response?.ok) throw new Error(i18n.t('errors.pastedData'))
+    return { blob: await response.blob(), name: i18n.t('names.pasted') }
   }
 
   const name = nameFromUrl(url)
@@ -104,24 +109,37 @@ export async function fetchImage(href: string): Promise<ImageSource> {
   }
 
   const proxied = await fetch(`${import.meta.env.BASE_URL}api/image?url=${encodeURIComponent(href)}`).catch(() => null)
-  if (!proxied) throw new Error('Could not load that URL. Check your connection and try again.')
+  if (!proxied) throw new Error(i18n.t('errors.urlLoad'))
   const type = proxied.headers.get('content-type') ?? ''
   if (proxied.ok && !type.includes('text/html')) {
     try {
       return { blob: await proxied.blob(), name }
     } catch {
-      throw new Error('That image could not be downloaded (it may be larger than 25 MB).')
+      throw new Error(i18n.t('errors.downloadFailed'))
     }
   }
   if (type.includes('application/json')) {
-    const body = (await proxied.json().catch(() => null)) as { error?: string } | null
+    const body = (await proxied.json().catch(() => null)) as {
+      error?: string
+      code?: string
+      params?: Record<string, string | number>
+    } | null
+    // The proxy names its errors so they can be shown in the user's language.
+    const key = `errors.api.${body?.code}`
+    if (body?.code && i18n.exists(key)) throw new Error(i18n.t(key as 'errors.api.timeout', body.params ?? {}))
     if (body?.error) throw new Error(body.error)
   }
-  throw new Error("That host doesn't allow direct access, and the image proxy isn't available. Download the image and drop it here instead.")
+  throw new Error(i18n.t('errors.noProxy'))
 }
 
 /** Thrown when the user backs out of a prompt; not worth an error message. */
 export class CancelledError extends Error {}
+
+class EmptyCaptureError extends Error {
+  constructor() {
+    super(i18n.t('errors.captureEmpty'))
+  }
+}
 
 export const canCaptureScreen = typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getDisplayMedia === 'function'
 
@@ -133,7 +151,7 @@ const CAPTURE_SETTLE_MS = 350
  * what to share, we keep a single frame and stop sharing straight away.
  */
 export async function captureScreen(): Promise<ImageSource> {
-  if (!canCaptureScreen) throw new Error("This browser can't capture the screen.")
+  if (!canCaptureScreen) throw new Error(i18n.t('errors.captureUnsupported'))
 
   // Not every option is in TypeScript's DOM types yet; unsupported ones are ignored by browsers.
   const options = { video: true, audio: false, selfBrowserSurface: 'exclude' }
@@ -143,10 +161,10 @@ export async function captureScreen(): Promise<ImageSource> {
   } catch (error) {
     const name = error instanceof DOMException ? error.name : ''
     if (name === 'NotAllowedError' && /system/i.test((error as DOMException).message)) {
-      throw new Error("Your system settings don't allow this browser to record the screen.")
+      throw new Error(i18n.t('errors.captureSystem'))
     }
     if (name === 'NotAllowedError' || name === 'AbortError') throw new CancelledError()
-    throw new Error('Screen capture could not be started.')
+    throw new Error(i18n.t('errors.captureStart'))
   }
 
   const video = document.createElement('video')
@@ -163,14 +181,14 @@ export async function captureScreen(): Promise<ImageSource> {
     canvas.width = width
     canvas.height = height
     const ctx = canvas.getContext('2d')
-    if (!width || !height || !ctx) throw new Error('The screen capture came back empty.')
+    if (!width || !height || !ctx) throw new EmptyCaptureError()
     ctx.drawImage(video, 0, 0, width, height)
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-    if (!blob) throw new Error('The screen capture came back empty.')
-    return { blob, name: 'Screenshot' }
+    if (!blob) throw new EmptyCaptureError()
+    return { blob, name: i18n.t('names.screenshot') }
   } catch (error) {
-    if (error instanceof CancelledError || (error instanceof Error && error.message.startsWith('The screen capture'))) throw error
-    throw new Error('Screen capture failed. Try again.')
+    if (error instanceof CancelledError || error instanceof EmptyCaptureError) throw error
+    throw new Error(i18n.t('errors.captureFailed'))
   } finally {
     for (const track of stream.getTracks()) track.stop()
     video.srcObject = null

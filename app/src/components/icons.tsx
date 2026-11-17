@@ -96,3 +96,16 @@ export const ScreenIcon = (p: Props) => (
     <path d="M8 20h8M12 16v4" />
   </Icon>
 )
+
+export const CropIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+    <path d="M2 6h14a2 2 0 0 1 2 2v14" />
+  </Icon>
+)
+
+export const CloseIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="M6 6l12 12M18 6 6 18" />
+  </Icon>
+)

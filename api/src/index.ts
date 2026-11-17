@@ -6,7 +6,7 @@ export default {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url)
     if (url.pathname === '/api/image') return proxyImage(request, url)
-    return fail(404, 'Not found.')
+    return fail(404, 'not_found', 'Not found.')
   },
 } satisfies ExportedHandler
 
@@ -15,16 +15,16 @@ export default {
  * don't send CORS headers and the browser therefore can't read their pixels.
  */
 async function proxyImage(request: Request, url: URL): Promise<Response> {
-  if (request.method !== 'GET') return fail(405, 'Method not allowed.')
+  if (request.method !== 'GET') return fail(405, 'method_not_allowed', 'Method not allowed.')
 
   // Only our own frontend may use the proxy: this blocks other sites from
   // hotlinking through it and blocks top-level navigations to proxied content.
   if (request.headers.get('sec-fetch-site') !== 'same-origin') {
-    return fail(403, 'This endpoint can only be used by the app itself.')
+    return fail(403, 'forbidden', 'This endpoint can only be used by the app itself.')
   }
 
   const requested = parseTarget(url.searchParams.get('url'))
-  if (!requested) return fail(400, 'That is not a valid public http(s) URL.')
+  if (!requested) return fail(400, 'invalid_url', 'That is not a valid public http(s) URL.')
   let target: URL = requested
 
   let upstream: Response
@@ -43,31 +43,31 @@ async function proxyImage(request: Request, url: URL): Promise<Response> {
       const location = upstream.headers.get('location')
       await upstream.body?.cancel()
       const next: URL | null = location ? parseTarget(new URL(location, target).href) : null
-      if (!next || hop >= MAX_REDIRECTS) return fail(502, 'The image host redirected somewhere we cannot follow.')
+      if (!next || hop >= MAX_REDIRECTS) return fail(502, 'bad_redirect', 'The image host redirected somewhere we cannot follow.')
       target = next
     }
   } catch (error) {
     const timedOut = error instanceof Error && error.name === 'TimeoutError'
     return timedOut
-      ? fail(504, 'The image host took too long to respond.')
-      : fail(502, 'Could not reach the image host.')
+      ? fail(504, 'timeout', 'The image host took too long to respond.')
+      : fail(502, 'unreachable', 'Could not reach the image host.')
   }
 
   if (!upstream.ok || !upstream.body) {
     await upstream.body?.cancel()
-    return fail(502, `The image host responded with HTTP ${upstream.status}.`)
+    return fail(502, 'upstream_status', `The image host responded with HTTP ${upstream.status}.`, { status: upstream.status })
   }
 
   const type = (upstream.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase()
   const isImage = type.startsWith('image/')
   if (!isImage && type !== '' && type !== 'application/octet-stream') {
     await upstream.body.cancel()
-    return fail(415, `That URL points to ${type}, not an image.`)
+    return fail(415, 'not_image', `That URL points to ${type}, not an image.`, { type })
   }
 
   if (Number(upstream.headers.get('content-length') ?? 0) > MAX_BYTES) {
     await upstream.body.cancel()
-    return fail(413, 'That image is too large (25 MB max).')
+    return fail(413, 'too_large', 'That image is too large (25 MB max).')
   }
 
   return new Response(capped(upstream.body, MAX_BYTES), {
@@ -131,6 +131,7 @@ function isPrivateHost(hostname: string): boolean {
   )
 }
 
-function fail(status: number, error: string): Response {
-  return Response.json({ error }, { status, headers: { 'cache-control': 'no-store' } })
+/** `code` and `params` let the frontend show the error in the user's language; `error` is the English fallback. */
+function fail(status: number, code: string, error: string, params?: Record<string, string | number>): Response {
+  return Response.json({ error, code, params }, { status, headers: { 'cache-control': 'no-store' } })
 }

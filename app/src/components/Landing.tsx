@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from 'react'
-import { canCaptureScreen } from '../lib/source.ts'
+import { Trans, useTranslation } from 'react-i18next'
+import { setUiLanguage, UI_LANGUAGES } from '../i18n.ts'
+import { canCaptureScreen, type Busy } from '../lib/source.ts'
 import { ArrowIcon, ClipboardIcon, LinkIcon, LogoIcon, ScreenIcon, UploadIcon } from './icons.tsx'
 
 interface Props {
-  busy: string | null
+  busy: Busy | null
   onPick: () => void
   onPaste: () => void
   onCapture: () => void
@@ -11,6 +13,7 @@ interface Props {
 }
 
 export function Landing({ busy, onPick, onPaste, onCapture, onUrl }: Props) {
+  const { t, i18n } = useTranslation()
   const [url, setUrl] = useState('')
 
   function submit(event: FormEvent) {
@@ -25,20 +28,16 @@ export function Landing({ busy, onPick, onPaste, onCapture, onUrl }: Props) {
           <span className="brand-mark">
             <LogoIcon />
           </span>
-          <h1>Copy text from any image</h1>
-          <p>Screenshots, photos, scans. Give it an image and select the text right on top of it.</p>
+          <h1>{t('app.title')}</h1>
+          <p>{t('landing.tagline')}</p>
         </header>
 
         <section className="intake" aria-busy={busy !== null}>
           <button type="button" className="dropzone" onClick={onPick} disabled={busy !== null}>
             <span className="dropzone-icon">{busy ? <span className="spinner" /> : <UploadIcon width="26" height="26" />}</span>
-            <span className="dropzone-title">{busy ?? 'Drop an image here, or click to browse'}</span>
+            <span className="dropzone-title">{busy ? t(`busy.${busy}`) : t('landing.drop')}</span>
             <span className="dropzone-hint">
-              {busy ? 'One moment…' : (
-                <>
-                  or paste one with <kbd>⌘V</kbd> / <kbd>Ctrl+V</kbd>
-                </>
-              )}
+              {busy ? t('landing.wait') : <Trans i18nKey="landing.pasteHint" components={{ kbd: <kbd /> }} />}
             </span>
           </button>
 
@@ -51,30 +50,45 @@ export function Landing({ busy, onPick, onPaste, onCapture, onUrl }: Props) {
                 autoComplete="off"
                 autoCapitalize="off"
                 spellCheck={false}
-                placeholder="Paste an image link"
-                aria-label="Image URL"
+                placeholder={t('landing.urlPlaceholder')}
+                aria-label={t('landing.urlLabel')}
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 disabled={busy !== null}
               />
-              <button type="submit" className="icon-button accent" aria-label="Load image from URL" disabled={busy !== null || !url.trim()}>
+              <button type="submit" className="icon-button accent" aria-label={t('landing.urlSubmit')} disabled={busy !== null || !url.trim()}>
                 <ArrowIcon />
               </button>
             </form>
             <button type="button" className="button" onClick={onPaste} disabled={busy !== null}>
               <ClipboardIcon />
-              Paste
+              {t('landing.paste')}
             </button>
             {canCaptureScreen && (
               <button type="button" className="button" onClick={onCapture} disabled={busy !== null}>
                 <ScreenIcon />
-                Screenshot
+                {t('landing.screenshot')}
               </button>
             )}
           </div>
         </section>
 
-        <p className="privacy">Text recognition runs entirely in your browser. Your images are never uploaded.</p>
+        <p className="privacy">{t('landing.privacy')}</p>
+
+        <div className="ui-language" role="group" aria-label={t('landing.uiLanguage')}>
+          {UI_LANGUAGES.map((language) => (
+            <button
+              key={language.code}
+              type="button"
+              lang={language.code}
+              className={i18n.resolvedLanguage === language.code ? 'active' : undefined}
+              aria-pressed={i18n.resolvedLanguage === language.code}
+              onClick={() => setUiLanguage(language.code)}
+            >
+              {language.name}
+            </button>
+          ))}
+        </div>
       </div>
     </main>
   )

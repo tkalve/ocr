@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Landing } from './components/Landing.tsx'
 import { Viewer } from './components/Viewer.tsx'
 import { UploadIcon } from './components/icons.tsx'
@@ -11,6 +12,7 @@ import {
   fetchImage,
   normalizeUrl,
   readClipboard,
+  type Busy,
   type Extracted,
   type ImageSource,
 } from './lib/source.ts'
@@ -29,8 +31,9 @@ const isUsefulDrag = (event: DragEvent) =>
   Boolean(event.dataTransfer?.types.some((t) => t === 'Files' || t === 'text/uri-list' || t === 'text/html'))
 
 export default function App() {
+  const { t } = useTranslation()
   const [image, setImage] = useState<LoadedImage | null>(null)
-  const [busy, setBusy] = useState<string | null>(null)
+  const [busy, setBusy] = useState<Busy | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
   const [dragging, setDragging] = useState(false)
   const [language, setLanguage] = useState(loadLanguage)
@@ -51,9 +54,9 @@ export default function App() {
 
   /** Loads a new image; the latest request always wins. */
   const open = useCallback(
-    async (label: string, source: () => Promise<ImageSource>) => {
+    async (kind: Busy, source: () => Promise<ImageSource>) => {
       const id = ++request.current
-      setBusy(label)
+      setBusy(kind)
       try {
         const { blob, name } = await source()
         const loaded = await loadImage(blob, name)
@@ -68,21 +71,21 @@ export default function App() {
         setImage(loaded)
       } catch (error) {
         if (id === request.current && !(error instanceof CancelledError)) {
-          notify(error instanceof Error ? error.message : 'Could not open that image.', 'error')
+          notify(error instanceof Error ? error.message : t('errors.openFailed'), 'error')
         }
       } finally {
         if (id === request.current) setBusy(null)
       }
     },
-    [notify],
+    [notify, t],
   )
 
   const openFile = useCallback(
-    (file: File) => open('Opening image…', async () => ({ blob: file, name: file.name || 'Pasted image' })),
-    [open],
+    (file: File) => open('opening', async () => ({ blob: file, name: file.name || t('names.pasted') })),
+    [open, t],
   )
-  const openUrl = useCallback((url: string) => open('Fetching image…', () => fetchImage(url)), [open])
-  const capture = useCallback(() => void open('Choose what to capture…', captureScreen), [open])
+  const openUrl = useCallback((url: string) => open('fetching', () => fetchImage(url)), [open])
+  const capture = useCallback(() => void open('capturing', captureScreen), [open])
 
   const openExtracted = useCallback(
     (found: Extracted, emptyMessage: string) => {
@@ -105,22 +108,22 @@ export default function App() {
     (value: string) => {
       const url = normalizeUrl(value, true)
       if (!url) {
-        notify("That doesn't look like a link to an image.", 'error')
+        notify(t('errors.notLink'), 'error')
         return false
       }
       void openUrl(url)
       return true
     },
-    [notify, openUrl],
+    [notify, openUrl, t],
   )
 
   const pasteFromClipboard = useCallback(async () => {
     try {
-      openExtracted(await readClipboard(), 'There is no image or image link on your clipboard.')
+      openExtracted(await readClipboard(), t('errors.clipboardEmpty'))
     } catch (error) {
-      notify(error instanceof Error ? error.message : 'Could not read the clipboard.', 'error')
+      notify(error instanceof Error ? error.message : t('errors.clipboardRead'), 'error')
     }
-  }, [notify, openExtracted])
+  }, [notify, openExtracted, t])
 
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
@@ -130,7 +133,7 @@ export default function App() {
       if (isTextField(event.target) && found.kind !== 'file') return
       if (found.kind === 'none' && !found.hadContent) return
       event.preventDefault()
-      openExtracted(found, 'That paste has no image or image link in it.')
+      openExtracted(found, t('errors.pasteEmpty'))
     }
 
     let depth = 0
@@ -155,7 +158,7 @@ export default function App() {
       setDragging(false)
       if (!event.dataTransfer || !isUsefulDrag(event)) return
       event.preventDefault()
-      openExtracted(extract(event.dataTransfer), "That drop didn't contain an image.")
+      openExtracted(extract(event.dataTransfer), t('errors.dropEmpty'))
     }
 
     document.addEventListener('paste', onPaste)
@@ -170,7 +173,7 @@ export default function App() {
       window.removeEventListener('dragleave', onDragLeave)
       window.removeEventListener('drop', onDrop)
     }
-  }, [openExtracted])
+  }, [openExtracted, t])
 
   const pick = useCallback(() => fileInput.current?.click(), [])
 
@@ -211,7 +214,7 @@ export default function App() {
         <div className="drop-overlay" aria-hidden="true">
           <div className="drop-overlay-card">
             <UploadIcon width="34" height="34" />
-            <span>Drop to read the text</span>
+            <span>{t('landing.dropOverlay')}</span>
           </div>
         </div>
       )}
