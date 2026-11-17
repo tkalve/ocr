@@ -1,16 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { Header } from './components/Header.tsx'
 import { Landing } from './components/Landing.tsx'
 import { Viewer } from './components/Viewer.tsx'
-import { UploadIcon } from './components/icons.tsx'
+import { ShieldIcon, UploadIcon } from './components/icons.tsx'
 import { loadImage, type LoadedImage } from './lib/image.ts'
-import { loadLanguage, saveLanguage } from './lib/languages.ts'
+import { defaultLanguage } from './lib/languages.ts'
 import {
   CancelledError,
-  captureScreen,
   extract,
   fetchImage,
-  normalizeUrl,
   readClipboard,
   type Busy,
   type Extracted,
@@ -36,7 +35,7 @@ export default function App() {
   const [busy, setBusy] = useState<Busy | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
   const [dragging, setDragging] = useState(false)
-  const [language, setLanguage] = useState(loadLanguage)
+  const [language, setLanguage] = useState(defaultLanguage)
 
   const request = useRef(0)
   const current = useRef<LoadedImage | null>(null)
@@ -85,7 +84,6 @@ export default function App() {
     [open, t],
   )
   const openUrl = useCallback((url: string) => open('fetching', () => fetchImage(url)), [open])
-  const capture = useCallback(() => void open('capturing', captureScreen), [open])
 
   const openExtracted = useCallback(
     (found: Extracted, emptyMessage: string) => {
@@ -103,19 +101,6 @@ export default function App() {
     setBusy(null)
     setImage(null)
   }, [])
-
-  const submitUrl = useCallback(
-    (value: string) => {
-      const url = normalizeUrl(value, true)
-      if (!url) {
-        notify(t('errors.notLink'), 'error')
-        return false
-      }
-      void openUrl(url)
-      return true
-    },
-    [notify, openUrl, t],
-  )
 
   const pasteFromClipboard = useCallback(async () => {
     try {
@@ -178,25 +163,30 @@ export default function App() {
   const pick = useCallback(() => fileInput.current?.click(), [])
 
   return (
-    <>
-      {image ? (
-        <Viewer
-          key={image.url}
-          image={image}
-          busy={busy}
-          language={language}
-          onLanguage={(code) => {
-            setLanguage(code)
-            saveLanguage(code)
-          }}
-          onPick={pick}
-          onCapture={capture}
-          onClose={close}
-          notify={notify}
-        />
-      ) : (
-        <Landing busy={busy} onPick={pick} onPaste={pasteFromClipboard} onCapture={capture} onUrl={submitUrl} />
-      )}
+    <div className="app">
+      <Header image={image} />
+
+      <main className="main">
+        {image ? (
+          <Viewer
+            key={image.url}
+            image={image}
+            busy={busy}
+            language={language}
+            onLanguage={setLanguage}
+            onPick={pick}
+            onClose={close}
+            notify={notify}
+          />
+        ) : (
+          <Landing busy={busy} onPick={pick} onPaste={pasteFromClipboard} />
+        )}
+      </main>
+
+      <footer className="footer">
+        <ShieldIcon width="16" height="16" />
+        <p>{t('app.privacy')}</p>
+      </footer>
 
       <input
         ref={fileInput}
@@ -226,6 +216,6 @@ export default function App() {
           </div>
         )}
       </div>
-    </>
+    </div>
   )
 }

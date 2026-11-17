@@ -86,7 +86,7 @@ export const ArrowIcon = (p: Props) => (
 export const LogoIcon = (p: Props) => (
   <Icon width="22" height="22" strokeWidth="2" {...p}>
     <path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2" />
-    <path d="M9 9h6M12 9v6" />
+    <path d="M8.5 9h7M8.5 12h7M8.5 15h4" />
   </Icon>
 )
 
@@ -107,5 +107,58 @@ export const CropIcon = (p: Props) => (
 export const CloseIcon = (p: Props) => (
   <Icon {...p}>
     <path d="M6 6l12 12M18 6 6 18" />
+  </Icon>
+)
+
+export const GlobeIcon = (p: Props) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+  </Icon>
+)
+
+export const MoonIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z" />
+  </Icon>
+)
+
+export const SunIcon = (p: Props) => (
+  <Icon {...p}>
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+  </Icon>
+)
+
+export const ChevronIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="m6 9 6 6 6-6" />
+  </Icon>
+)
+
+export const CheckIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="m5 12.5 4.5 4.5L19 7.5" />
+  </Icon>
+)
+
+export const ShieldIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6l-7-3Z" />
+    <path d="m9 12 2 2 4-4" />
+  </Icon>
+)
+
+export const AlertIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="M12 4 2.5 20h19L12 4Z" />
+    <path d="M12 10v4.5M12 17.5v.01" />
+  </Icon>
+)
+
+export const RetryIcon = (p: Props) => (
+  <Icon {...p}>
+    <path d="M4 12a8 8 0 1 0 2.5-5.8" />
+    <path d="M4 4v4.5h4.5" />
   </Icon>
 )

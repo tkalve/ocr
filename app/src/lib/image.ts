@@ -4,6 +4,8 @@ export interface LoadedImage {
   /** Object URL for display. Owned by whoever holds the LoadedImage. */
   url: string
   name: string
+  /** Size of the source file in bytes. */
+  size: number
   width: number
   height: number
   /** Set when the image has transparency: the backdrop that keeps its content readable. */
@@ -30,7 +32,7 @@ export async function loadImage(blob: Blob, name: string): Promise<LoadedImage> 
     URL.revokeObjectURL(url)
     throw new ImageError(i18n.t('errors.noSize'))
   }
-  return { url, name, width, height, backdrop: detectBackdrop(element), element }
+  return { url, name, size: blob.size, width, height, backdrop: detectBackdrop(element), element }
 }
 
 /** Transparent images need a backdrop that contrasts with their content. */

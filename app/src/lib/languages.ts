@@ -38,23 +38,5 @@ export function languageChoices(): Language[] {
 /** The languages to read with for a choice. */
 export const languagesFor = (choice: string) => (choice === AUTO ? AUTO_LANGUAGES : [choice])
 
-const STORAGE_KEY = 'ocr.language'
-const FALLBACK = CHOICES[0] ?? 'eng'
-
-export function loadLanguage(): string {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored && CHOICES.includes(stored)) return stored
-  } catch {
-    // Storage can be unavailable (private mode, blocked cookies).
-  }
-  return FALLBACK
-}
-
-export function saveLanguage(code: string): void {
-  try {
-    localStorage.setItem(STORAGE_KEY, code)
-  } catch {
-    // Not persisting the choice is harmless.
-  }
-}
+/** The choice every session starts with: Auto, when it is available. */
+export const defaultLanguage = (): string => CHOICES[0] ?? 'eng'
